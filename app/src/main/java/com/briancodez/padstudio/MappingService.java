@@ -246,8 +246,10 @@ public final class MappingService extends AccessibilityService implements Sensor
             if (Math.abs(cameraX[index]) > radius || Math.abs(cameraY[index]) > radius) {
                 touch.release(id); cameraX[index] = 0; cameraY[index] = 0; return true;
             }
-            touch.hold(id, screen(stick.x * size[0] + cameraX[index], size[0]), screen(stick.y * size[1] + cameraY[index], size[1]));
-        } else touch.hold(id, screen(stick.x * size[0] + value[0] * radius + gyroX, size[0]), screen(stick.y * size[1] + value[1] * radius + gyroY, size[1]));
+            touch.dragHold(id, screen(stick.x * size[0], size[0]), screen(stick.y * size[1], size[1]),
+                screen(stick.x * size[0] + cameraX[index], size[0]), screen(stick.y * size[1] + cameraY[index], size[1]));
+        } else touch.dragHold(id, screen(stick.x * size[0], size[0]), screen(stick.y * size[1], size[1]),
+            screen(stick.x * size[0] + value[0] * radius + gyroX, size[0]), screen(stick.y * size[1] + value[1] * radius + gyroY, size[1]));
         return true;
     }
     @Override public void onSensorChanged(SensorEvent event) {

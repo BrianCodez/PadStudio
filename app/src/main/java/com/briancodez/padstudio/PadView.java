@@ -25,12 +25,15 @@ public final class PadView extends View {
     }
     @Override protected void onMeasure(int widthSpec, int heightSpec) {
         int width = MeasureSpec.getSize(widthSpec);
-        setMeasuredDimension(width, Math.round(width * .66f));
+        android.content.res.Configuration config = getResources().getConfiguration();
+        boolean landscape = config.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE && config.screenWidthDp >= 600;
+        int height = landscape ? Math.round(210 * getResources().getDisplayMetrics().density) : Math.round(width * .66f);
+        setMeasuredDimension(width, height);
     }
     @Override protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
-        float scale = getWidth() / 440f;
-        canvas.save(); canvas.scale(scale, scale);
+        float scale = Math.min(getWidth() / 440f, getHeight() / 290f);
+        canvas.save(); canvas.translate((getWidth() - 440 * scale) / 2, 0); canvas.scale(scale, scale);
         paint.setColor(0xFF304355); paint.setStyle(Paint.Style.FILL);
         Path body = new Path();
         body.moveTo(114, 78); body.cubicTo(53, 78, 43, 127, 29, 203);
@@ -80,9 +83,10 @@ public final class PadView extends View {
     @Override public boolean onTouchEvent(MotionEvent event) {
         if (event.getAction() == MotionEvent.ACTION_DOWN) return true;
         if (event.getAction() == MotionEvent.ACTION_UP) {
-            float scale = getWidth() / 440f;
+            float scale = Math.min(getWidth() / 440f, getHeight() / 290f);
+            float x = (event.getX() - (getWidth() - 440 * scale) / 2) / scale;
             for (Map.Entry<String, RectF> entry : targets.entrySet()) {
-                if (entry.getValue().contains(event.getX() / scale, event.getY() / scale)) {
+                if (entry.getValue().contains(x, event.getY() / scale)) {
                     selected = entry.getKey(); invalidate(); performClick();
                     if (onSelect != null) onSelect.accept(selected); return true;
                 }

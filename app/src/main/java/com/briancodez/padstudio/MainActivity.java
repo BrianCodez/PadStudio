@@ -101,6 +101,10 @@ public final class MainActivity extends Activity {
         try { state.putString("draft", settings.json().toString()); } catch (Exception ignored) { }
     }
     private Model.Profile profile() { return settings.active(); }
+    private boolean wide() {
+        android.content.res.Configuration config = getResources().getConfiguration();
+        return config.screenWidthDp >= 840 || (config.screenWidthDp >= 600 && config.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE);
+    }
     private int dp(float value) { return Math.round(value * getResources().getDisplayMetrics().density); }
     private GradientDrawable background(int color, int radius) {
         GradientDrawable result = new GradientDrawable(); result.setColor(color); result.setCornerRadius(dp(radius)); return result;
@@ -166,18 +170,27 @@ public final class MainActivity extends Activity {
         refreshStatus();
     }
     private void renderEditor() {
+        boolean wide = wide();
         LinearLayout header = row();
-        LinearLayout title = column(); title.addView(text("PadStudio", 29, INK, true)); title.addView(text("Controller layouts", 13, SOFT, false));
+        LinearLayout title = column(); title.addView(text("PadStudio", wide ? 25 : 29, INK, true));
+        if (!wide) title.addView(text("Controller layouts", 13, SOFT, false));
         header.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
-        saveButton = button(dirty ? "Save layout" : "Saved", true, this::save); header.addView(saveButton); page.addView(header); refreshSave();
-        gap(page, 18);
+        saveButton = button(dirty ? "Save layout" : "Saved", true, this::save);
         LinearLayout tools = row();
         engineButton = button(settings.enabled ? "Pause mapping" : "Start mapping", settings.enabled, this::toggleEngine);
-        tools.addView(engineButton, new LinearLayout.LayoutParams(0, -2, 1));
+        tools.addView(engineButton, new LinearLayout.LayoutParams(wide ? -2 : 0, -2, wide ? 0 : 1));
         LinearLayout.LayoutParams setupParams = new LinearLayout.LayoutParams(-2, -2); setupParams.leftMargin = dp(9);
-        tools.addView(button("Setup", false, () -> navigate("setup")), setupParams); page.addView(tools);
-        statusText = text("", 13, SOFT, false); statusText.setPadding(0, dp(9), 0, 0); page.addView(statusText); line(page);
-        page.addView(text("PROFILE", 12, SOFT, true));
+        tools.addView(button("Setup", false, () -> navigate("setup")), setupParams);
+        if (wide) {
+            header.addView(tools);
+            LinearLayout.LayoutParams saveParams = new LinearLayout.LayoutParams(-2, -2); saveParams.leftMargin = dp(9); header.addView(saveButton, saveParams);
+            page.addView(header);
+        } else {
+            header.addView(saveButton); page.addView(header); gap(page, 18); page.addView(tools);
+        }
+        refreshSave();
+        statusText = text("", 13, SOFT, false); statusText.setPadding(0, dp(wide ? 5 : 9), 0, 0); page.addView(statusText);
+        if (wide) gap(page, 10); else { line(page); page.addView(text("PROFILE", 12, SOFT, true)); }
         LinearLayout profileRow = row();
         String[] names = settings.profiles.stream().map(item -> item.name).toArray(String[]::new);
         int active = settings.profiles.indexOf(profile());
@@ -186,25 +199,34 @@ public final class MainActivity extends Activity {
             settings.activeId = settings.profiles.get(index).id;
             if (save()) { layer = 0; render(); }
         });
+        profiles.setContentDescription("Profile");
         profileRow.addView(profiles, new LinearLayout.LayoutParams(0, dp(50), 1));
         Button manage = button("•••", false, this::profileMenu); manage.setContentDescription("Manage profiles");
         LinearLayout.LayoutParams manageParams = new LinearLayout.LayoutParams(dp(50), dp(46)); manageParams.leftMargin = dp(9); profileRow.addView(manage, manageParams);
-        page.addView(profileRow); gap(page, 14);
         LinearLayout layers = row();
         for (int i = 0; i < Model.LAYERS.length; i++) {
             final int current = i;
-            Button control = button(Model.LAYERS[i], i == layer, () -> { layer = current; render(); });
+            Button control = button(wide && i == 1 ? "Menu" : Model.LAYERS[i], i == layer, () -> { layer = current; render(); });
+            if (wide) { control.setTextSize(13); control.setPadding(dp(7), dp(7), dp(7), dp(7)); }
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, -2, 1); if (i > 0) params.leftMargin = dp(6); layers.addView(control, params);
         }
-        page.addView(layers); gap(page, 15);
         LinearLayout tabs = row();
         for (String name : new String[]{"Buttons", "Sticks", "Triggers", "Gyro"}) {
             Button control = button(name, false, () -> { tab = name; render(); });
             control.setTextColor(name.equals(tab) ? ACCENT : SOFT); control.setBackground(background(name.equals(tab) ? SURFACE : BG, 5));
             control.setPadding(dp(3), dp(9), dp(3), dp(9));
+            if (wide) control.setTextSize(13);
             tabs.addView(control, new LinearLayout.LayoutParams(0, -2, 1));
         }
-        page.addView(tabs); gap(page, 18);
+        if (wide) {
+            LinearLayout toolbar = row();
+            toolbar.addView(profileRow, new LinearLayout.LayoutParams(0, -2, 1.15f));
+            LinearLayout.LayoutParams layerParams = new LinearLayout.LayoutParams(0, -2, .8f); layerParams.leftMargin = dp(10); toolbar.addView(layers, layerParams);
+            LinearLayout.LayoutParams tabParams = new LinearLayout.LayoutParams(0, -2, 1.15f); tabParams.leftMargin = dp(10); toolbar.addView(tabs, tabParams);
+            page.addView(toolbar); gap(page, 14);
+        } else {
+            page.addView(profileRow); gap(page, 14); page.addView(layers); gap(page, 15); page.addView(tabs); gap(page, 18);
+        }
         switch (tab) {
             case "Sticks" -> renderSticks();
             case "Triggers" -> renderTriggers();
@@ -222,7 +244,7 @@ public final class MainActivity extends Activity {
         heading(panel, title); gap(panel, 10); return panel;
     }
     private void workspace(LinearLayout visual, LinearLayout inspector) {
-        boolean wide = getResources().getConfiguration().screenWidthDp >= 720;
+        boolean wide = wide();
         if (wide) {
             LinearLayout workspace = new LinearLayout(this); workspace.setOrientation(LinearLayout.HORIZONTAL); workspace.setGravity(Gravity.TOP);
             workspace.addView(visual, new LinearLayout.LayoutParams(0, -2, 1.3f));
@@ -239,7 +261,7 @@ public final class MainActivity extends Activity {
             GridLayout.LayoutParams params = new GridLayout.LayoutParams(GridLayout.spec(GridLayout.UNDEFINED), GridLayout.spec(GridLayout.UNDEFINED, 1f));
             params.width = 0; params.height = dp(43); params.setMargins(dp(2), dp(3), dp(2), dp(3)); inputs.addView(control, params);
         }
-        visual.addView(inputs);
+        if (!wide()) visual.addView(inputs);
         Model.Binding binding = profile().binding(layer, selected);
         LinearLayout panel = inspector(selected + " · assignment");
         select(panel, "Action", Model.Action.values(), binding.action, value -> { binding.action = (Model.Action) value; changed(); render(); });
@@ -258,6 +280,7 @@ public final class MainActivity extends Activity {
         if (binding.action == Model.Action.PASS) helper(panel, "This input reaches the game normally.");
         if (binding.action == Model.Action.TOUCH_HOLD && binding.activation == Model.Activation.RELEASE) helper(panel, "Release activation sends a 500 ms touch.");
         if (selected.endsWith("full")) helper(panel, "Full-stage trigger bindings need analog capture on Android 14 or newer.");
+        if (wide()) select(panel, "Input", Model.INPUTS, selected, value -> { selected = value.toString(); render(); });
         workspace(visual, panel);
     }
     private void renderSticks() {

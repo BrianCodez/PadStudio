@@ -209,9 +209,22 @@ public class PadStudioTest {
         config.active().left.mode = Model.StickMode.JOYSTICK;
         config.active().left.x = config.active().binding(0, "A").x;
         config.active().left.y = config.active().binding(0, "A").y;
+        AtomicReference<Float> firstX = new AtomicReference<>(), movedX = new AtomicReference<>();
+        scenario.onActivity(activity -> {
+            View target = find(activity.getWindow().getDecorView(), "Touches received · 0");
+            target.setOnTouchListener((view, event) -> {
+                if (event.getActionMasked() == MotionEvent.ACTION_DOWN) firstX.set(event.getRawX());
+                if (event.getActionMasked() == MotionEvent.ACTION_MOVE) movedX.set(event.getRawX());
+                if (event.getActionMasked() == MotionEvent.ACTION_UP) activity.playgroundTouches++;
+                return true;
+            });
+        });
         main(() -> store.save(config)); SystemClock.sleep(150);
         motion(.7f); await(() -> RuntimeState.leftX > .6f, "Joystick axis did not reach accessibility service");
-        SystemClock.sleep(250); motion(0);
+        await(() -> firstX.get() != null && movedX.get() != null && movedX.get() - firstX.get() > 20, "Touch joystick did not drag from its anchor");
+        Rect display = instrumentation.getTargetContext().getSystemService(WindowManager.class).getMaximumWindowMetrics().getBounds();
+        assertEquals(config.active().left.x * display.width(), firstX.get(), 3f);
+        motion(0);
         await(() -> received() == 1, "Analog touch did not release. " + RuntimeState.status);
     }
     private void motion(float x) {
@@ -241,8 +254,13 @@ public class PadStudioTest {
         scenario = ActivityScenario.launch(MainActivity.class); SystemClock.sleep(300);
         screenshot("editor-portrait.png");
         scenario.onActivity(activity -> activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE));
-        await(() -> instrumentation.getTargetContext().getResources().getConfiguration().orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE, "Landscape did not activate");
-        SystemClock.sleep(400); screenshot("editor-landscape.png");
+        await(() -> {
+            boolean[] ready = new boolean[1];
+            scenario.onActivity(activity -> ready[0] = activity.getResources().getConfiguration().orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+                && activity.getWindow().getDecorView().getWidth() > activity.getWindow().getDecorView().getHeight());
+            return ready[0];
+        }, "Landscape layout did not finish");
+        SystemClock.sleep(1200); screenshot("editor-landscape.png");
         scenario.onActivity(activity -> activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));
     }
     private void screenshot(String name) throws Exception {

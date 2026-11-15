@@ -27,6 +27,7 @@ public final class TouchEngine {
         float x, y, lastX, lastY, startX, startY;
         long startAt, endAt;
         boolean active = true;
+        boolean started;
         boolean restart;
         float restartX, restartY;
         GestureDescription.StrokeDescription stroke;
@@ -45,6 +46,9 @@ public final class TouchEngine {
     public TouchEngine(AccessibilityService service, BooleanSupplier preferShell) { this.service = service; this.preferShell = preferShell; }
 
     public void hold(String id, float x, float y) {
+        dragHold(id, x, y, x, y);
+    }
+    public void dragHold(String id, float startX, float startY, float x, float y) {
         Contact contact = contacts.get(id);
         if (contact != null && !contact.active) {
             contact.restart = true; contact.restartX = x; contact.restartY = y;
@@ -54,7 +58,7 @@ public final class TouchEngine {
             if (contacts.isEmpty()) shellSession = preferShell.getAsBoolean();
             if (contacts.size() >= GestureDescription.getMaxStrokeCount()) return;
             contact = new Contact();
-            contact.lastX = x; contact.lastY = y;
+            contact.lastX = startX; contact.lastY = startY;
             contacts.put(id, contact);
         }
         contact.x = x; contact.y = y; contact.active = true;
@@ -172,6 +176,9 @@ public final class TouchEngine {
                 currentX = contact.startX + (contact.x - contact.startX) * fraction;
                 currentY = contact.startY + (contact.y - contact.startY) * fraction;
                 if (fraction == 1) contact.active = false;
+            }
+            if (!contact.started) {
+                currentX = contact.lastX; currentY = contact.lastY; contact.started = true;
             }
             ids.add(id); x.add(currentX); y.add(currentY);
         }

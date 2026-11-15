@@ -28,6 +28,7 @@ Android 11 or newer is required. Stick and analog trigger capture requires Andro
 - Soft/full analog trigger bindings.
 - Handheld or phone gyroscope touch aiming, with sensitivity and smoothing.
 - Live controller tester, touch playground, and accessibility overlay target picker.
+- Quick settings tile to pause or resume mapping from any app.
 
 This first version does not implement native gamepad-to-gamepad remapping, keyboard/mouse injection, controller-specific gyro protocols, Steam config import, flick stick, arbitrary macros, or radial menus. Games that reject accessibility-generated gestures may be incompatible. Emulator tests cover synthetic input and delivered gestures. Physical controller compatibility and device gyro aiming need validation on the target handheld.
 

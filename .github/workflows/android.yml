@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   checks:
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -32,6 +33,7 @@ jobs:
           path: app/build/reports/
 
   device-tests:
+    timeout-minutes: 20
     needs: checks
     runs-on: ubuntu-latest
     strategy:
@@ -56,9 +58,11 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back none -camera-front none
           script: |
-            ./gradlew connectedDebugAndroidTest --console=plain
+            test_status=0
+            ./gradlew connectedDebugAndroidTest --console=plain || test_status=$?
             mkdir -p screenshots
-            adb pull /sdcard/Android/data/com.briancodez.padstudio/files/. screenshots/
+            adb pull /sdcard/Android/data/com.briancodez.padstudio/files/. screenshots/ || true
+            exit "$test_status"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
@@ -69,6 +73,7 @@ jobs:
             screenshots/
 
   release:
+    timeout-minutes: 15
     if: startsWith(github.ref, 'refs/tags/v')
     needs: device-tests
     permissions:
@@ -98,8 +103,18 @@ jobs:
           props.chmod(0o600)
           PY
       - name: Build signed APK
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
           ./gradlew assembleRelease --console=plain
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          metadata = json.loads(Path('app/build/outputs/apk/release/output-metadata.json').read_text())
+          version = metadata['elements'][0]['versionName']
+          if os.environ['RELEASE_TAG'] != 'v' + version:
+              raise SystemExit('Release tag must match the APK versionName')
+          PY
           mkdir -p release
           cp app/build/outputs/apk/release/app-release.apk release/PadStudio.apk
           cd release

@@ -44,6 +44,7 @@ public class PadStudioTest {
         instrumentation = InstrumentationRegistry.getInstrumentation();
         automation = instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES);
         store = new Store(instrumentation.getTargetContext());
+        shell("settings put global hidden_api_policy 1");
         main(() -> store.save(Model.Settings.defaults()));
         shell("settings put secure enabled_accessibility_services com.briancodez.padstudio/.MappingService");
         shell("settings put secure accessibility_enabled 1");
@@ -83,8 +84,16 @@ public class PadStudioTest {
     private void key(int code, boolean down) {
         long now = SystemClock.uptimeMillis();
         KeyEvent event = new KeyEvent(now, now, down ? KeyEvent.ACTION_DOWN : KeyEvent.ACTION_UP,
-            code, 0, 0, -1, 0, 0, InputDevice.SOURCE_GAMEPAD);
-        assertTrue("Input injection failed", automation.injectInputEvent(event, true));
+            code, 0, 0, -1, 0, 0, InputDevice.SOURCE_GAMEPAD | InputDevice.SOURCE_KEYBOARD);
+        injectToAccessibility(event);
+    }
+    private void injectToAccessibility(android.view.InputEvent event) {
+        // Normal UiAutomation injection bypasses accessibility to prevent feedback loops.
+        // This framework TestApi is used only by instrumentation, never by the shipped app.
+        try {
+            UiAutomation.class.getMethod("injectInputEventToInputFilter", android.view.InputEvent.class).invoke(automation, event);
+        } catch (ReflectiveOperationException error) { throw new AssertionError("Accessibility test injection unavailable", error); }
+        instrumentation.waitForIdleSync();
     }
     private int received() {
         int[] value = new int[1]; scenario.onActivity(activity -> value[0] = activity.playgroundTouches); return value[0];
@@ -163,6 +172,29 @@ public class PadStudioTest {
         key(KeyEvent.KEYCODE_BUTTON_A, false); SystemClock.sleep(200);
         int stopped = received(); SystemClock.sleep(300); assertEquals(stopped, received());
     }
+    @Test public void doublePressAndReleaseActivationsUseTheirOwnTiming() {
+        openPlayground(Model.Action.TAP);
+        Model.Settings config = store.load(); config.active().binding(0, "A").activation = Model.Activation.DOUBLE;
+        main(() -> store.save(config)); SystemClock.sleep(100);
+        key(KeyEvent.KEYCODE_BUTTON_A, true); key(KeyEvent.KEYCODE_BUTTON_A, false);
+        SystemClock.sleep(80); assertEquals(0, received());
+        key(KeyEvent.KEYCODE_BUTTON_A, true); key(KeyEvent.KEYCODE_BUTTON_A, false);
+        await(() -> received() == 1, "Double press did not fire");
+        config.active().binding(0, "A").activation = Model.Activation.RELEASE;
+        main(() -> store.save(config)); SystemClock.sleep(100);
+        key(KeyEvent.KEYCODE_BUTTON_A, true); SystemClock.sleep(150); assertEquals(1, received());
+        key(KeyEvent.KEYCODE_BUTTON_A, false);
+        await(() -> received() == 2, "Release activation did not fire");
+    }
+    @Test public void pausingMappingReleasesAnActiveContact() {
+        openPlayground(Model.Action.TOUCH_HOLD);
+        key(KeyEvent.KEYCODE_BUTTON_A, true); SystemClock.sleep(150); assertEquals(0, received());
+        Model.Settings config = store.load(); config.enabled = false;
+        main(() -> store.save(config));
+        await(() -> received() == 1, "Pausing left an active touch");
+        key(KeyEvent.KEYCODE_BUTTON_A, false); SystemClock.sleep(150);
+        assertEquals(1, received());
+    }
     @Test @SdkSuppress(minSdkVersion = 34) public void analogStickCreatesAndReleasesTouch() {
         openPlayground(Model.Action.PASS);
         Model.Settings config = store.load(); config.captureAnalog = true;
@@ -181,7 +213,7 @@ public class PadStudioTest {
         MotionEvent event = MotionEvent.obtain(now, now, MotionEvent.ACTION_MOVE, 1,
             new MotionEvent.PointerProperties[]{properties}, new MotionEvent.PointerCoords[]{coordinates},
             0, 0, 1, 1, -1, 0, InputDevice.SOURCE_JOYSTICK, 0);
-        assertTrue(automation.injectInputEvent(event, true)); event.recycle();
+        injectToAccessibility(event); event.recycle();
     }
     @Test public void targetPickerSavesNormalizedCoordinates() {
         scenario = ActivityScenario.launch(MainActivity.class);

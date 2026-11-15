@@ -44,7 +44,8 @@ public final class MappingService extends AccessibilityService implements Sensor
     private String foreground = "";
     private FrameLayout picker;
     private boolean analogTicking;
-    private float cameraX, cameraY, gyroX, gyroY, smoothedX, smoothedY;
+    private final float[] cameraX = new float[2], cameraY = new float[2];
+    private float pendingGyroX, pendingGyroY, smoothedX, smoothedY;
     private long sensorTime;
     private final SharedPreferences.OnSharedPreferenceChangeListener preferencesChanged = (preferences, key) -> {
         if ("settings".equals(key)) reload();
@@ -92,6 +93,7 @@ public final class MappingService extends AccessibilityService implements Sensor
         if (event.getPackageName() == null || settings == null) return;
         String app = event.getPackageName().toString();
         foreground = app;
+        if (blocked()) { resetInputs(); return; }
         if (app.equals(getPackageName()) || app.equals("com.android.systemui")) return;
         if (settings.enabled) for (Model.Profile profile : settings.profiles) {
             if (!profile.appPackage.isEmpty() && profile.appPackage.equals(app) && !profile.id.equals(settings.activeId)) {
@@ -117,6 +119,7 @@ public final class MappingService extends AccessibilityService implements Sensor
         RuntimeState.notifyChanged();
         String token = event.getDeviceId() + ":" + input;
         boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
+        if (down && event.getRepeatCount() > 0) return swallowedKeys.contains(token);
         boolean swallowedDown = !down && swallowedKeys.remove(token);
         if (blocked()) return swallowedDown;
         boolean consumed = routeInput(event.getDeviceId(), input, down);
@@ -154,7 +157,7 @@ public final class MappingService extends AccessibilityService implements Sensor
         if (press.repeat != null) handler.removeCallbacks(press.repeat);
         if (press.consumed && press.binding.activation == Model.Activation.RELEASE) activateOnce(press);
         else if (press.binding.action == Model.Action.TOUCH_HOLD) touch.release(press.contact);
-        if (input.equals("LT")) { touch.release("gyro"); sensorTime = 0; }
+        if (input.equals("LT")) { pendingGyroX = 0; pendingGyroY = 0; sensorTime = 0; }
         return press.consumed;
     }
     private void activate(Press press) {
@@ -218,33 +221,38 @@ public final class MappingService extends AccessibilityService implements Sensor
                 analogTicking = false; return;
             }
             Model.Profile profile = settings.active();
-            boolean left = updateStick("left", profile.left, RuntimeState.leftX, RuntimeState.leftY);
-            boolean right = updateStick("right", profile.right, RuntimeState.rightX, RuntimeState.rightY);
+            float gyroX = pendingGyroX, gyroY = pendingGyroY;
+            pendingGyroX = 0; pendingGyroY = 0;
+            boolean left = updateStick("left", profile.left, RuntimeState.leftX, RuntimeState.leftY, 0, 0);
+            boolean right = updateStick("right", profile.right, RuntimeState.rightX, RuntimeState.rightY, gyroX, gyroY);
             if (left || right) handler.postDelayed(this, 32);
             else analogTicking = false;
         }
     };
-    private boolean updateStick(String id, Model.Stick stick, float rawX, float rawY) {
-        float[] value = InputMath.stick(rawX, rawY, stick.deadzone, stick.sensitivity, stick.curve);
-        if (stick.mode == Model.StickMode.PASS || (value[0] == 0 && value[1] == 0)) {
-            touch.release(id); if (id.equals("right")) { cameraX = 0; cameraY = 0; } return false;
+    private boolean updateStick(String id, Model.Stick stick, float rawX, float rawY, float gyroX, float gyroY) {
+        int index = id.equals("left") ? 0 : 1;
+        float[] value = settings.captureAnalog && stick.mode != Model.StickMode.PASS
+            ? InputMath.stick(rawX, rawY, stick.deadzone, stick.sensitivity, stick.curve) : new float[]{0, 0};
+        if (value[0] == 0 && value[1] == 0 && gyroX == 0 && gyroY == 0) {
+            touch.release(id); cameraX[index] = 0; cameraY[index] = 0; return false;
         }
         float[] size = displaySize();
         float radius = Math.min(size[0], size[1]) * stick.radius;
-        if (stick.mode == Model.StickMode.CAMERA) {
-            cameraX += value[0] * radius * .12f; cameraY += value[1] * radius * .12f;
-            if (Math.abs(cameraX) > radius || Math.abs(cameraY) > radius) {
-                touch.release(id); cameraX = 0; cameraY = 0; return true;
+        if (stick.mode != Model.StickMode.JOYSTICK) {
+            cameraX[index] += value[0] * radius * .12f + gyroX;
+            cameraY[index] += value[1] * radius * .12f + gyroY;
+            if (Math.abs(cameraX[index]) > radius || Math.abs(cameraY[index]) > radius) {
+                touch.release(id); cameraX[index] = 0; cameraY[index] = 0; return true;
             }
-            touch.hold(id, screen(stick.x * size[0] + cameraX, size[0]), screen(stick.y * size[1] + cameraY, size[1]));
-        } else touch.hold(id, screen(stick.x * size[0] + value[0] * radius, size[0]), screen(stick.y * size[1] + value[1] * radius, size[1]));
+            touch.hold(id, screen(stick.x * size[0] + cameraX[index], size[0]), screen(stick.y * size[1] + cameraY[index], size[1]));
+        } else touch.hold(id, screen(stick.x * size[0] + value[0] * radius + gyroX, size[0]), screen(stick.y * size[1] + value[1] * radius + gyroY, size[1]));
         return true;
     }
     @Override public void onSensorChanged(SensorEvent event) {
-        if (settings == null || blocked()) { touch.release("gyro"); sensorTime = 0; return; }
+        if (settings == null || blocked()) { pendingGyroX = 0; pendingGyroY = 0; sensorTime = 0; return; }
         Model.Profile profile = settings.active();
         boolean aiming = profile.gyroActivation.equals("Always on") || presses.keySet().stream().anyMatch(key -> key.endsWith(":LT"));
-        if (!profile.gyroEnabled || !aiming) { touch.release("gyro"); sensorTime = 0; gyroX = 0; gyroY = 0; return; }
+        if (!profile.gyroEnabled || !aiming) { sensorTime = 0; pendingGyroX = 0; pendingGyroY = 0; return; }
         float dt = sensorTime == 0 ? 0 : Math.min(.05f, (event.timestamp - sensorTime) / 1_000_000_000f);
         sensorTime = event.timestamp;
         float dx = -event.values[1], dy = -event.values[0];
@@ -255,13 +263,11 @@ public final class MappingService extends AccessibilityService implements Sensor
         float smoothing = profile.gyroSmoothing;
         smoothedX = smoothedX * smoothing + dx * (1 - smoothing);
         smoothedY = smoothedY * smoothing + dy * (1 - smoothing);
-        if (Math.abs(smoothedX) + Math.abs(smoothedY) < .025f) { touch.release("gyro"); gyroX = 0; gyroY = 0; return; }
+        if (Math.abs(smoothedX) + Math.abs(smoothedY) < .025f) return;
         float[] size = displaySize();
-        gyroX += smoothedX * dt * profile.gyroSensitivity * size[0] * .22f;
-        gyroY += smoothedY * dt * profile.gyroSensitivity * size[1] * .22f;
-        float radius = Math.min(size[0], size[1]) * .22f;
-        if (Math.abs(gyroX) > radius || Math.abs(gyroY) > radius) { touch.release("gyro"); gyroX = 0; gyroY = 0; return; }
-        touch.hold("gyro", screen(profile.right.x * size[0] + gyroX, size[0]), screen(profile.right.y * size[1] + gyroY, size[1]));
+        pendingGyroX += smoothedX * dt * profile.gyroSensitivity * size[0] * .22f;
+        pendingGyroY += smoothedY * dt * profile.gyroSensitivity * size[1] * .22f;
+        if (!analogTicking) { analogTicking = true; handler.post(analogTick); }
     }
     @Override public void onAccuracyChanged(Sensor sensor, int accuracy) { }
     private float[] displaySize() {
@@ -320,7 +326,8 @@ public final class MappingService extends AccessibilityService implements Sensor
         }
         presses.clear(); lastDown.clear();
         handler.removeCallbacks(analogTick); analogTicking = false;
-        cameraX = 0; cameraY = 0; gyroX = 0; gyroY = 0; smoothedX = 0; smoothedY = 0;
+        cameraX[0] = 0; cameraX[1] = 0; cameraY[0] = 0; cameraY[1] = 0;
+        pendingGyroX = 0; pendingGyroY = 0; smoothedX = 0; smoothedY = 0;
         if (touch != null) touch.releaseAll();
     }
     @Override public void onInterrupt() { resetInputs(); }

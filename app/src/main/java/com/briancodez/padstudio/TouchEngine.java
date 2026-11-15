@@ -24,6 +24,8 @@ public final class TouchEngine {
         float x, y, lastX, lastY, startX, startY;
         long startAt, endAt;
         boolean active = true;
+        boolean restart;
+        float restartX, restartY;
         GestureDescription.StrokeDescription stroke;
     }
     private static final class Segment {
@@ -41,7 +43,11 @@ public final class TouchEngine {
 
     public void hold(String id, float x, float y) {
         Contact contact = contacts.get(id);
-        if (contact == null || !contact.active) {
+        if (contact != null && !contact.active) {
+            contact.restart = true; contact.restartX = x; contact.restartY = y;
+            return;
+        }
+        if (contact == null) {
             if (contacts.size() >= GestureDescription.getMaxStrokeCount()) return;
             contact = new Contact();
             contact.lastX = x; contact.lastY = y;
@@ -62,10 +68,10 @@ public final class TouchEngine {
     }
     public void release(String id) {
         Contact contact = contacts.get(id);
-        if (contact != null) { contact.active = false; pulse(); }
+        if (contact != null) { contact.active = false; contact.restart = false; pulse(); }
     }
     public void releaseAll() {
-        for (Contact contact : contacts.values()) contact.active = false;
+        for (Contact contact : contacts.values()) { contact.active = false; contact.restart = false; }
         pulse();
     }
     private void pulse() {
@@ -99,7 +105,15 @@ public final class TouchEngine {
                     inFlight = false;
                     for (Segment segment : segments) {
                         if (contacts.get(segment.id) != segment.contact) continue;
-                        if (segment.ending) contacts.remove(segment.id);
+                        if (segment.ending) {
+                            contacts.remove(segment.id);
+                            if (segment.contact.restart) {
+                                Contact next = new Contact();
+                                next.x = segment.contact.restartX; next.y = segment.contact.restartY;
+                                next.lastX = next.x; next.lastY = next.y;
+                                contacts.put(segment.id, next);
+                            }
+                        }
                         else {
                             segment.contact.stroke = segment.stroke;
                             segment.contact.lastX = segment.x; segment.contact.lastY = segment.y;

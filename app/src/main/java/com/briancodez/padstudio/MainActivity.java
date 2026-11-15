@@ -317,6 +317,14 @@ public final class MainActivity extends Activity {
             settings.captureAnalog = value; changed(); save();
         });
         helper(service, "Analog capture redirects joystick motion to PadStudio, including otherwise unmapped axes. Enable it for touch-only games. Keep it off for games with native controller support.");
+        fullButton(service, "Add quick settings pause tile", false, () -> {
+            if (Build.VERSION.SDK_INT >= 33) {
+                getSystemService(android.app.StatusBarManager.class).requestAddTileService(
+                    new android.content.ComponentName(this, MappingTileService.class), "PadStudio",
+                    android.graphics.drawable.Icon.createWithResource(this, com.briancodez.padstudio.R.drawable.ic_tile),
+                    getMainExecutor(), result -> toast("Use the PadStudio tile to pause or resume mapping"));
+            } else message("Add PadStudio to quick settings", "Open Android quick settings, tap Edit, and drag the PadStudio tile into your active tiles. It pauses or resumes mapping from any app.");
+        });
         page.addView(service); gap(page, 18);
         LinearLayout target = inspector("Game profile");
         helper(target, "Linked app · " + (profile().appPackage.isEmpty() ? "Any app, selected manually" : profile().appPackage));

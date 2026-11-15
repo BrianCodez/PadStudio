@@ -59,6 +59,7 @@ public final class MainActivity extends Activity {
     private Typeface regular, semibold;
     private Button saveButton, engineButton;
     private TextView statusText, testInput, testAxes, testDevices;
+    private TextView shellStatus;
     private CurveView curve, tester;
     private TextView playgroundCount;
     public int playgroundTouches;
@@ -140,7 +141,7 @@ public final class MainActivity extends Activity {
         render();
     }
     private void render() {
-        statusText = null; testInput = null; testAxes = null; testDevices = null; tester = null; curve = null; saveButton = null; engineButton = null;
+        statusText = null; shellStatus = null; testInput = null; testAxes = null; testDevices = null; tester = null; curve = null; saveButton = null; engineButton = null;
         ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true); scroll.setBackgroundColor(BG);
         page = column(); page.setPadding(dp(22), dp(16), dp(22), dp(24));
         scroll.addView(page, new ScrollView.LayoutParams(-1, -2)); setContentView(scroll);
@@ -242,14 +243,18 @@ public final class MainActivity extends Activity {
         Model.Binding binding = profile().binding(layer, selected);
         LinearLayout panel = inspector(selected + " · assignment");
         select(panel, "Action", Model.Action.values(), binding.action, value -> { binding.action = (Model.Action) value; changed(); render(); });
-        select(panel, "Activation", Model.Activation.values(), binding.activation, value -> { binding.activation = (Model.Activation) value; changed(); });
+        select(panel, "Activation", Model.Activation.values(), binding.activation, value -> {
+            binding.activation = (Model.Activation) value;
+            if (binding.activation == Model.Activation.RELEASE) binding.repeat = false;
+            changed(); render();
+        });
         if (binding.action.usesTouch()) {
             range(panel, "Horizontal target", 0, 100, Math.round(binding.x * 100), "%", value -> { binding.x = value / 100f; changed(); });
             range(panel, "Vertical target", 0, 100, Math.round(binding.y * 100), "%", value -> { binding.y = value / 100f; changed(); });
             fullButton(panel, "Place target on screen", false, () -> placeTarget(selected));
             helper(panel, "Targets use the full display. Place them in the orientation you play in.");
         }
-        if (binding.action == Model.Action.TAP) toggle(panel, "Repeat while held", binding.repeat, value -> { binding.repeat = value; changed(); });
+        if (binding.action == Model.Action.TAP && binding.activation != Model.Activation.RELEASE) toggle(panel, "Repeat while held", binding.repeat, value -> { binding.repeat = value; changed(); });
         if (binding.action == Model.Action.PASS) helper(panel, "This input reaches the game normally.");
         if (binding.action == Model.Action.TOUCH_HOLD && binding.activation == Model.Activation.RELEASE) helper(panel, "Release activation sends a 500 ms touch.");
         if (selected.endsWith("full")) helper(panel, "Full-stage trigger bindings need analog capture on Android 14 or newer.");
@@ -270,7 +275,7 @@ public final class MainActivity extends Activity {
         range(panel, "Anchor X", 0, 100, Math.round(stick.x * 100), "%", value -> { stick.x = value / 100f; changed(); });
         range(panel, "Anchor Y", 0, 100, Math.round(stick.y * 100), "%", value -> { stick.y = value / 100f; changed(); });
         fullButton(panel, "Place stick anchor", false, () -> placeTarget(stickIndex == 0 ? "Left stick" : "Right stick"));
-        helper(panel, "Touch outputs require analog capture in Setup, available on Android 14+. Pass-through games should keep analog capture off.");
+        helper(panel, "Touch outputs require Shizuku and analog capture in Setup, available on Android 14+. Pass-through games should keep analog capture off.");
         workspace(visual, panel);
     }
     private void renderTriggers() {
@@ -316,7 +321,19 @@ public final class MainActivity extends Activity {
             if (value && Build.VERSION.SDK_INT < 34) { message("Android 14 required", "Button mappings work on Android 11+. Analog capture needs Android 14 or newer."); render(); return; }
             settings.captureAnalog = value; changed(); save();
         });
-        helper(service, "Analog capture redirects joystick motion to PadStudio, including otherwise unmapped axes. Enable it for touch-only games. Keep it off for games with native controller support.");
+        helper(service, "Analog capture requires a connected Shizuku touch engine. It redirects joystick motion to PadStudio, including unmapped axes. Keep it off for native gamepad games.");
+        shellStatus = text(ShellBridge.status(), 14, ACCENT, true); service.addView(shellStatus);
+        fullButton(service, "Connect Shizuku touch engine", false, () -> {
+            ShellBridge.connect(true); refreshStatus();
+            if (!ShellBridge.ready() && ShellBridge.status().contains("Start Shizuku")) {
+                new AlertDialog.Builder(this).setTitle("Start Shizuku for analog touch output")
+                    .setMessage("Start Shizuku using wireless debugging or root, return here, and connect PadStudio. Shizuku keeps controller motion from cancelling mapped touches. Button-only mapping works through accessibility.")
+                    .setPositiveButton("Open Shizuku", (dialog, which) -> {
+                        Intent shizuku = getPackageManager().getLaunchIntentForPackage("moe.shizuku.privileged.api");
+                        startActivity(shizuku == null ? new Intent(Intent.ACTION_VIEW, Uri.parse("https://shizuku.rikka.app/download/")) : shizuku);
+                    }).setNegativeButton("Later", null).show();
+            }
+        });
         fullButton(service, "Add quick settings pause tile", false, () -> {
             if (Build.VERSION.SDK_INT >= 33) {
                 getSystemService(android.app.StatusBarManager.class).requestAddTileService(
@@ -381,6 +398,7 @@ public final class MainActivity extends Activity {
         statusText = text("", 14, ACCENT, false); page.addView(statusText);
     }
     private void refreshStatus() {
+        if (shellStatus != null) shellStatus.setText(ShellBridge.status());
         if (statusText != null) {
             if (MappingService.instance == null) statusText.setText("Enable the accessibility service in Setup");
             else if (screen.equals("setup")) statusText.setText("Accessibility service connected");

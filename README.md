@@ -15,7 +15,7 @@ Android 11 or newer is required. Stick and analog trigger capture requires Andro
 1. Open **Setup** and enable **PadStudio controller mapping** in Android accessibility settings. Android may require **Allow restricted settings** from the app info menu for a sideloaded app.
 2. Select a profile. Choose a button and an action. Touch actions support a target picker and percentage coordinates.
 3. Save the layout and start mapping. Use **Touch playground** to verify that a mapped button delivers a screen touch.
-4. Enable **Capture analog controller input** for stick-to-touch or two-stage trigger mappings. This redirects joystick motion to PadStudio, so keep it off for native gamepad games.
+4. For analog touch output, install and start [Shizuku](https://shizuku.rikka.app/download/) using wireless debugging or root. In PadStudio Setup, connect the Shizuku touch engine and authorize it, then enable **Capture analog controller input**. This redirects joystick motion to PadStudio, so keep it off for native gamepad games. Shizuku must be restarted after a device reboot.
 5. Optionally link a game in Setup to switch profiles when that app opens. Export a profile backup before replacing profiles by import.
 
 ## Version 0.1
@@ -25,16 +25,17 @@ Android 11 or newer is required. Stick and analog trigger capture requires Andro
 - Screen taps, held touches, directional swipes, Android Back/Home/Recents, and menu layer switching.
 - Press, hold, double-press, and release activation. Repeat while held for screen taps.
 - Stick deadzones, response curves, sensitivity, touch joystick output, and touch camera output.
+- Optional Shizuku multitouch injection for analog control, avoiding Android's cancellation of accessibility gestures on joystick motion.
 - Soft/full analog trigger bindings.
 - Handheld or phone gyroscope touch aiming, with sensitivity and smoothing.
 - Live controller tester, touch playground, and accessibility overlay target picker.
 - Quick settings tile to pause or resume mapping from any app.
 
-This first version does not implement native gamepad-to-gamepad remapping, keyboard/mouse injection, controller-specific gyro protocols, Steam config import, flick stick, arbitrary macros, or radial menus. Games that reject accessibility-generated gestures may be incompatible. Emulator tests cover synthetic input and delivered gestures. Physical controller compatibility and device gyro aiming need validation on the target handheld.
+This first version does not implement native gamepad-to-gamepad remapping, keyboard/mouse injection, controller-specific gyro protocols, Steam config import, flick stick, arbitrary macros, or radial menus. Touch output targets the primary display. Games that reject accessibility-generated gestures may need the Shizuku backend or be incompatible. Emulator tests cover synthetic input and delivered gestures. Physical controller compatibility and device gyro aiming need validation on the target handheld.
 
 ## Privacy
 
-PadStudio has no network permission. Profiles stay on the device. The accessibility service receives controller input and foreground app package events, sends gestures, and displays the target placement overlay. It does not request access to screen content. The optional GitHub button opens an external browser.
+PadStudio has no network permission. Profiles stay on the device. The accessibility service receives controller input and foreground app package events, sends gestures, and displays the target placement overlay. It does not request access to screen content. Optional Shizuku authorization starts a helper that only injects touch contacts. Its watchdog releases contacts if the client stops responding. GitHub and Shizuku download buttons open an external browser.
 
 ## Build
 
@@ -54,4 +55,4 @@ Android 15 tests send synthetic controller events through the framework accessib
 
 ## License
 
-Application code is MIT licensed. Barlow fonts use the SIL Open Font License, included in `app/src/main/assets/Barlow-OFL.txt`.
+Application code and the Shizuku API dependency are MIT licensed. Barlow fonts use the SIL Open Font License. Dependency license texts are included in `app/src/main/assets/`.

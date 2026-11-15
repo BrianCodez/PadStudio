@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
 
 /** Continues all active contacts together so a button does not cancel a held stick. */
 public final class TouchEngine {
@@ -17,7 +18,9 @@ public final class TouchEngine {
     private final AccessibilityService service;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Map<String, Contact> contacts = new LinkedHashMap<>();
+    private final BooleanSupplier preferShell;
     private boolean inFlight;
+    private boolean shellSession, shellScheduled;
     private int generation;
 
     private static final class Contact {
@@ -39,7 +42,7 @@ public final class TouchEngine {
         }
     }
 
-    public TouchEngine(AccessibilityService service) { this.service = service; }
+    public TouchEngine(AccessibilityService service, BooleanSupplier preferShell) { this.service = service; this.preferShell = preferShell; }
 
     public void hold(String id, float x, float y) {
         Contact contact = contacts.get(id);
@@ -48,6 +51,7 @@ public final class TouchEngine {
             return;
         }
         if (contact == null) {
+            if (contacts.isEmpty()) shellSession = preferShell.getAsBoolean();
             if (contacts.size() >= GestureDescription.getMaxStrokeCount()) return;
             contact = new Contact();
             contact.lastX = x; contact.lastY = y;
@@ -60,6 +64,7 @@ public final class TouchEngine {
     public void slide(String id, float x, float y, float endX, float endY, long duration) {
         if (contacts.containsKey(id)) return;
         if (contacts.size() >= GestureDescription.getMaxStrokeCount()) return;
+        if (contacts.isEmpty()) shellSession = preferShell.getAsBoolean();
         Contact contact = new Contact();
         contact.x = endX; contact.y = endY; contact.lastX = x; contact.lastY = y;
         contact.startX = x; contact.startY = y; contact.startAt = SystemClock.uptimeMillis();
@@ -76,6 +81,7 @@ public final class TouchEngine {
     }
     private void pulse() {
         if (inFlight || contacts.isEmpty()) return;
+        if (shellSession) { pulseShell(); return; }
         long now = SystemClock.uptimeMillis();
         GestureDescription.Builder builder = new GestureDescription.Builder();
         List<Segment> segments = new ArrayList<>();
@@ -142,6 +148,42 @@ public final class TouchEngine {
     }
     private void cancel(String message) {
         generation++; inFlight = false; contacts.clear();
+        if (shellSession) ShellBridge.clear();
         RuntimeState.status = message; RuntimeState.notifyChanged();
+    }
+    private void pulseShell() {
+        if (shellScheduled) return;
+        long now = SystemClock.uptimeMillis();
+        List<String> ids = new ArrayList<>(); List<Float> x = new ArrayList<>(), y = new ArrayList<>();
+        Map<String, Contact> restarts = new LinkedHashMap<>();
+        for (String id : new ArrayList<>(contacts.keySet())) {
+            Contact contact = contacts.get(id);
+            if (!contact.active) {
+                contacts.remove(id);
+                if (contact.restart) {
+                    Contact next = new Contact(); next.x = contact.restartX; next.y = contact.restartY;
+                    next.lastX = next.x; next.lastY = next.y; restarts.put(id, next);
+                }
+                continue;
+            }
+            float currentX = contact.x, currentY = contact.y;
+            if (contact.endAt > 0) {
+                float fraction = Math.min(1, (float) (now - contact.startAt) / (contact.endAt - contact.startAt));
+                currentX = contact.startX + (contact.x - contact.startX) * fraction;
+                currentY = contact.startY + (contact.y - contact.startY) * fraction;
+                if (fraction == 1) contact.active = false;
+            }
+            ids.add(id); x.add(currentX); y.add(currentY);
+        }
+        float[] horizontal = new float[x.size()], vertical = new float[y.size()];
+        for (int i = 0; i < x.size(); i++) { horizontal[i] = x.get(i); vertical[i] = y.get(i); }
+        if (!ShellBridge.sync(ids.toArray(new String[0]), horizontal, vertical)) {
+            cancel("Shizuku touch output stopped. Reconnect it in Setup."); return;
+        }
+        contacts.putAll(restarts);
+        if (!contacts.isEmpty()) {
+            shellScheduled = true;
+            handler.postDelayed(() -> { shellScheduled = false; pulse(); }, FRAME_MS);
+        }
     }
 }

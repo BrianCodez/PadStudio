@@ -62,7 +62,7 @@ public final class MappingService extends AccessibilityService implements Sensor
 
     @Override protected void onServiceConnected() {
         instance = this;
-        store = new Store(this); touch = new TouchEngine(this);
+        store = new Store(this); touch = new TouchEngine(this, () -> settings != null && settings.captureAnalog && ShellBridge.ready());
         sensors = getSystemService(SensorManager.class);
         store.preferences.registerOnSharedPreferenceChangeListener(preferencesChanged);
         reload();
@@ -70,15 +70,13 @@ public final class MappingService extends AccessibilityService implements Sensor
     private void reload() {
         resetInputs(); settings = store.load(); RuntimeState.layer = 0;
         refreshCapture();
-        RuntimeState.status = settings.enabled ? "Mapping active · " + settings.active().name : "Mapping paused";
-        RuntimeState.notifyChanged();
     }
     public void refreshCapture() {
         if (settings == null) return;
         if (blocked()) resetInputs();
         if (Build.VERSION.SDK_INT >= 34) {
             AccessibilityServiceInfo info = getServiceInfo();
-            info.setMotionEventSources(RuntimeState.testing || (settings.enabled && settings.captureAnalog)
+            info.setMotionEventSources(RuntimeState.testing || (settings.enabled && settings.captureAnalog && ShellBridge.ready())
                 ? InputDevice.SOURCE_JOYSTICK : 0);
             setServiceInfo(info);
         }
@@ -88,6 +86,10 @@ public final class MappingService extends AccessibilityService implements Sensor
             Sensor gyro = sensors.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
             if (gyro != null) sensors.registerListener(this, gyro, SensorManager.SENSOR_DELAY_GAME);
         }
+        RuntimeState.status = settings.enabled
+            ? settings.captureAnalog && !ShellBridge.ready() ? "Buttons active · connect Shizuku for analog output" : "Mapping active · " + settings.active().name
+            : "Mapping paused";
+        RuntimeState.notifyChanged();
     }
     @Override public void onAccessibilityEvent(AccessibilityEvent event) {
         if (event.getPackageName() == null || settings == null) return;
@@ -333,6 +335,7 @@ public final class MappingService extends AccessibilityService implements Sensor
     @Override public void onInterrupt() { resetInputs(); }
     @Override public void onDestroy() {
         closePicker(); resetInputs();
+        ShellBridge.clear();
         if (sensors != null) sensors.unregisterListener(this);
         if (store != null) store.preferences.unregisterOnSharedPreferenceChangeListener(preferencesChanged);
         instance = null; RuntimeState.status = "Accessibility service disconnected"; RuntimeState.notifyChanged();

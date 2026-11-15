@@ -203,6 +203,8 @@ public class PadStudioTest {
     }
     @Test @SdkSuppress(minSdkVersion = 34) public void analogStickCreatesAndReleasesTouch() {
         openPlayground(Model.Action.PASS);
+        main(() -> ShellBridge.connect(false));
+        await(ShellBridge::ready, "Shizuku touch engine did not connect: " + ShellBridge.status());
         Model.Settings config = store.load(); config.captureAnalog = true;
         config.active().left.mode = Model.StickMode.JOYSTICK;
         config.active().left.x = config.active().binding(0, "A").x;

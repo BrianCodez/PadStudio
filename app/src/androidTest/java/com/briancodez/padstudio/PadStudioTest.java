@@ -88,6 +88,12 @@ public class PadStudioTest {
         injectToAccessibility(event);
     }
     private void injectToAccessibility(android.view.InputEvent event) {
+        if (android.os.Build.VERSION.SDK_INT == 30) {
+            // Android 11 lacks the input-filter TestApi. Exercise the service callback
+            // directly, then verify its actual system-delivered touch gesture.
+            main(() -> MappingService.instance.onKeyEvent((KeyEvent) event));
+            return;
+        }
         // Normal UiAutomation injection bypasses accessibility to prevent feedback loops.
         // This framework TestApi is used only by instrumentation, never by the shipped app.
         try {

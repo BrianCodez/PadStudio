@@ -50,6 +50,8 @@ For release signing, create a local, ignored `signing.properties` file with `sto
 
 GitHub Actions checks the app and runs instrumentation tests on Android 11 and 15. A `v*` tag publishes a release after those checks pass. Configure the repository secrets `ANDROID_KEYSTORE_BASE64` and `ANDROID_KEYSTORE_PASSWORD`, using alias `padstudio`. Increase `versionCode` and `versionName` in `app/build.gradle`, update `RELEASE_NOTES.md`, then push the matching version tag.
 
+Android 15 tests send synthetic controller events through the framework accessibility input filter. Android 11 lacks that test API, so its tests enter through the service callback. Both verify real screen gesture delivery. These test hooks exist only in the instrumentation APK.
+
 ## License
 
 Application code is MIT licensed. Barlow fonts use the SIL Open Font License, included in `app/src/main/assets/Barlow-OFL.txt`.

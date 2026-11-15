@@ -244,7 +244,10 @@ public class PadStudioTest {
         scenario.onActivity(activity -> activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));
     }
     private void screenshot(String name) throws Exception {
-        File output = new File(instrumentation.getTargetContext().getExternalFilesDir(null), name);
+        String testOutput = InstrumentationRegistry.getArguments().getString("additionalTestOutputDir");
+        File directory = testOutput == null ? instrumentation.getTargetContext().getExternalFilesDir(null) : new File(testOutput);
+        assertTrue(directory.isDirectory() || directory.mkdirs());
+        File output = new File(directory, name);
         Bitmap bitmap = automation.takeScreenshot(); assertNotNull(bitmap);
         try (FileOutputStream stream = new FileOutputStream(output)) { bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream); }
         bitmap.recycle();

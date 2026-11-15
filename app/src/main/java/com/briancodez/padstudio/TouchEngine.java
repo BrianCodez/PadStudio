@@ -79,6 +79,7 @@ public final class TouchEngine {
         long now = SystemClock.uptimeMillis();
         GestureDescription.Builder builder = new GestureDescription.Builder();
         List<Segment> segments = new ArrayList<>();
+        boolean continuing = contacts.values().stream().anyMatch(contact -> contact.stroke != null);
         for (Map.Entry<String, Contact> entry : contacts.entrySet()) {
             Contact contact = entry.getValue();
             boolean ending = !contact.active || (contact.endAt > 0 && now + FRAME_MS >= contact.endAt);
@@ -88,10 +89,18 @@ public final class TouchEngine {
                 x = contact.startX + (contact.x - contact.startX) * fraction;
                 y = contact.startY + (contact.y - contact.startY) * fraction;
             }
+            // Android drops a continuation containing no MOVE or UP events.
+            // One pixel of alternating movement keeps a stationary held contact alive.
+            if (!ending && Math.round(x) == Math.round(contact.lastX) && Math.round(y) == Math.round(contact.lastY)) {
+                x = contact.x + 1;
+            }
             Path path = new Path(); path.moveTo(contact.lastX, contact.lastY);
             if (x != contact.lastX || y != contact.lastY) path.lineTo(x, y);
+            // A continuing gesture's first sample must contain exactly its previous
+            // fingers. Additional fingers enter in the following sample.
+            long start = contact.stroke == null && continuing ? 1 : 0;
             GestureDescription.StrokeDescription stroke = contact.stroke == null
-                ? new GestureDescription.StrokeDescription(path, 0, FRAME_MS, !ending)
+                ? new GestureDescription.StrokeDescription(path, start, FRAME_MS - start, !ending)
                 : contact.stroke.continueStroke(path, 0, FRAME_MS, !ending);
             builder.addStroke(stroke);
             segments.add(new Segment(entry.getKey(), contact, stroke, x, y, ending));

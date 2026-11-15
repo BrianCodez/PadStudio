@@ -57,12 +57,7 @@ jobs:
           profile: pixel_5
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back none -camera-front none
-          script: |
-            test_status=0
-            ./gradlew connectedDebugAndroidTest --console=plain || test_status=$?
-            mkdir -p screenshots
-            adb pull /sdcard/Android/data/com.briancodez.padstudio/files/. screenshots/ || true
-            exit "$test_status"
+          script: ./gradlew connectedDebugAndroidTest --console=plain
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
@@ -70,7 +65,6 @@ jobs:
           path: |
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
-            screenshots/
 
   release:
     timeout-minutes: 15

@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">PadStudio</string>
+    <string name="accessibility_description">Maps controller buttons and optional analog motion to screen touches and Android navigation. Reads the foreground app package for game profiles. The target picker draws an overlay while you place a touch target. Screen text and passwords are never read. All profiles stay on your device.</string>
+    <style name="AppTheme" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#66C0F4</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowBackground">#101823</item>
+        <item name="android:navigationBarColor">#101823</item>
+        <item name="android:statusBarColor">#101823</item>
+    </style>
+</resources>
